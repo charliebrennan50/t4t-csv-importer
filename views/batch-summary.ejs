@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Batch Summary</title>
+</head>
+<body>
+  <h1>Batch Summary</h1>
+
+  <ul>
+    <li><strong>Batch ID:</strong> <%= summary.batch_id %></li>
+    <li><strong>Families:</strong> <%= summary.family_count %></li>
+    <li><strong>Children:</strong> <%= summary.child_count %></li>
+    <li><strong>Valid rows:</strong> <%= summary.valid_count %></li>
+    <li><strong>Invalid rows:</strong> <%= summary.invalid_count %></li>
+    <li><strong>Imported at:</strong> <%= summary.imported_at %></li>
+  </ul>
+
+  <a href="/">Import another file</a>
+</body>
+</html>
