@@ -36,30 +36,54 @@ function mapGender(raw) {
   };
 }
 
-// Season file layout only:
-// CONTROL NUMBER, COMMENTS, then repeating GENDER, AGE, COMMENTS
-function normalizeChildren(value) {
-  let children = value;
-  if (typeof children === "string") {
-    try {
-      children = JSON.parse(children);
-    } catch {
-      return { children: [], error: "children JSON is invalid" };
+function headerNames(headerRow) {
+  return headerRow.map((h) => String(h || "").trim());
+}
+
+function isNumberedHeader(names) {
+  const upper = names.map((n) => n.toUpperCase().replace(/\s+/g, "_"));
+  return upper.includes("GENDER1") || upper.includes("CONTROL_NUMBER");
+}
+
+function parseNumberedRow(record) {
+  const control =
+    record.CONTROL_NUMBER ||
+    record["CONTROL NUMBER"] ||
+    record.control_number ||
+    "";
+  const family =
+    record.FAMILY_COMMENTS ||
+    record["FAMILY COMMENTS"] ||
+    record.COMMENTS ||
+    record.family_comments ||
+    "";
+
+  const children = [];
+  const errors = [];
+  for (let n = 1; n <= 20; n++) {
+    const genderRaw = record[`GENDER${n}`] || record[`Gender${n}`] || "";
+    const ageRaw = record[`AGE${n}`] || record[`Age${n}`] || "";
+    const comments = record[`COMMENTS${n}`] || record[`Comments${n}`] || "";
+    if (!String(genderRaw).trim() && !String(ageRaw).trim()) continue;
+
+    const mapped = mapGender(genderRaw);
+    if (mapped.error) errors.push(`child ${n}: ${mapped.error}`);
+    const ageStr = String(ageRaw).trim();
+    if (!/^\d+$/.test(ageStr)) errors.push(`child ${n}: age must be a whole number`);
+    if (!mapped.error && /^\d+$/.test(ageStr)) {
+      children.push({
+        gender: mapped.gender,
+        age: parseInt(ageStr, 10),
+        special_requests: String(comments).trim() || null,
+      });
     }
   }
-  if (!Array.isArray(children)) {
-    return { children: [], error: "children is not an array" };
-  }
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i];
-    if (!child || !child.gender || child.age === undefined || child.age === null) {
-      return {
-        children: [],
-        error: `child ${i + 1} missing gender or age`,
-      };
-    }
-  }
-  return { children, error: null };
+  return {
+    control_number: String(control).trim(),
+    family_comment: String(family).trim() || null,
+    children,
+    errors,
+  };
 }
 
 function parseRepeatingRow(cells) {
@@ -71,20 +95,14 @@ function parseRepeatingRow(cells) {
     const genderRaw = cells[col] || "";
     const ageRaw = cells[col + 1] || "";
     const comments = cells[col + 2] || "";
-    const hasGender = String(genderRaw).trim();
-    const hasAge = String(ageRaw).trim();
-    const hasComments = String(comments).trim();
-    if (!hasGender && !hasAge && !hasComments) {
+    if (!String(genderRaw).trim() && !String(ageRaw).trim() && !String(comments).trim()) {
       continue;
     }
-    if (!hasGender) {
-      errors.push(`child ${n}: missing gender`);
-    }
     const mapped = mapGender(genderRaw);
-    if (hasGender && mapped.error) errors.push(`child ${n}: ${mapped.error}`);
+    if (mapped.error) errors.push(`child ${n}: ${mapped.error}`);
     const ageStr = String(ageRaw).trim();
     if (!/^\d+$/.test(ageStr)) errors.push(`child ${n}: age must be a whole number`);
-    if (mapped.gender && /^\d+$/.test(ageStr)) {
+    if (!mapped.error && /^\d+$/.test(ageStr)) {
       children.push({
         gender: mapped.gender,
         age: parseInt(ageStr, 10),
@@ -113,13 +131,19 @@ function validateAndParseCsv(filePath) {
     return { ok: false, families: [], report: [{ row_number: 1, error: "File is empty" }] };
   }
 
+  const names = headerNames(records[0]);
+  const numbered = isNumberedHeader(names);
   const families = [];
   const report = [];
   const seen = new Map();
 
   for (let i = 1; i < records.length; i++) {
     const row_number = i + 1;
-    const parsed = parseRepeatingRow(records[i]);
+    const parsed = numbered
+      ? parseNumberedRow(
+          Object.fromEntries(names.map((name, idx) => [name, records[i][idx] || ""]))
+        )
+      : parseRepeatingRow(records[i]);
 
     const rowErrors = [...parsed.errors];
     if (!parsed.control_number) {
@@ -255,127 +279,16 @@ app.post("/import", upload.single("csv"), async (req, res) => {
   }
 });
 
-async function getLiveOverlap(batchId) {
-  const { rows } = await pool.query(
-    `
-    SELECT s.control_number, s.row_number, r.status AS live_status
-    FROM workflow.staging_import s
-    INNER JOIN workflow.recipients r ON r.control_number = s.control_number
-    WHERE s.batch_id = $1
-    ORDER BY s.control_number
-    `,
-    [batchId]
-  );
-  return rows;
-}
-
 app.get("/batch/:batchId", async (req, res) => {
   try {
     const summary = await getBatchSummary(req.params.batchId);
     if (!summary) {
       return res.status(404).send("Batch not found");
     }
-    const overlap = await getLiveOverlap(req.params.batchId);
-    res.render("batch-summary", {
-      summary,
-      overlap,
-      message: req.query.message || null,
-      promoted: req.query.promoted || null,
-    });
+    res.render("batch-summary", { summary });
   } catch (err) {
     console.error(err);
     res.status(500).send("Error loading batch summary");
-  }
-});
-
-app.post("/batch/:batchId/promote", async (req, res) => {
-  const batchId = req.params.batchId;
-  const client = await pool.connect();
-  try {
-    const overlap = await getLiveOverlap(batchId);
-    if (overlap.length) {
-      return res.redirect(
-        `/batch/${batchId}?message=${encodeURIComponent(
-          `${overlap.length} control number(s) already exist in recipients. Nothing appended.`
-        )}`
-      );
-    }
-
-    const { rows: families } = await client.query(
-      `SELECT control_number, family_comments, children
-       FROM workflow.staging_import
-       WHERE batch_id = $1
-       ORDER BY row_number`,
-      [batchId]
-    );
-
-    if (!families.length) {
-      return res.redirect(
-        `/batch/${batchId}?message=${encodeURIComponent("Batch is empty.")}`
-      );
-    }
-
-    const prepared = [];
-    for (const family of families) {
-      const normalized = normalizeChildren(family.children);
-      if (normalized.error) {
-        return res.redirect(
-          `/batch/${batchId}?message=${encodeURIComponent(
-            `Control ${family.control_number}: ${normalized.error}. Nothing appended.`
-          )}`
-        );
-      }
-      if (!normalized.children.length) {
-        return res.redirect(
-          `/batch/${batchId}?message=${encodeURIComponent(
-            `Control ${family.control_number} has no children in staging. Nothing appended.`
-          )}`
-        );
-      }
-      prepared.push({
-        control_number: family.control_number,
-        family_comment: family.family_comment || family.family_comments || null,
-        children: normalized.children,
-      });
-    }
-
-    await client.query("BEGIN");
-    for (const family of prepared) {
-      await client.query(
-        `INSERT INTO workflow.recipients (control_number, status, family_comment)
-         VALUES ($1, 'approved', $2)`,
-        [family.control_number, family.family_comment]
-      );
-      for (const child of family.children) {
-        await client.query(
-          `INSERT INTO workflow.children (control_number, gender, age, special_requests)
-           VALUES ($1, $2, $3, $4)`,
-          [
-            family.control_number,
-            child.gender,
-            child.age,
-            child.special_requests || null,
-          ]
-        );
-      }
-    }
-    await client.query("COMMIT");
-
-    return res.redirect(
-      `/batch/${batchId}?promoted=${families.length}`
-    );
-  } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch (_) {}
-    console.error("[PROMOTE] failed:", err);
-    return res.redirect(
-      `/batch/${batchId}?message=${encodeURIComponent(
-        `Append failed; live tables unchanged. ${err.message}`
-      )}`
-    );
-  } finally {
-    client.release();
   }
 });
 
