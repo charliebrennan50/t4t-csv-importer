@@ -218,7 +218,7 @@ app.post("/import", upload.single("csv"), async (req, res) => {
       for (const family of parsed.families) {
         await client.query(
           `INSERT INTO workflow.staging_import
-           (batch_id, row_number, control_number, family_comments, children, is_valid)
+           (batch_id, row_number, control_number, family_comment, children, is_valid)
            VALUES ($1, $2, $3, $4, $5, true)`,
           [
             batch_id,
@@ -251,7 +251,7 @@ app.post("/import", upload.single("csv"), async (req, res) => {
       blocked: true,
     });
   } finally {
-    fs.unlink(filePath, () => {});
+    fs.unlink(filePath, () => { });
   }
 });
 
@@ -302,7 +302,7 @@ app.post("/batch/:batchId/promote", async (req, res) => {
     }
 
     const { rows: families } = await client.query(
-      `SELECT control_number, family_comments, children
+      `SELECT control_number, family_comment, children
        FROM workflow.staging_import
        WHERE batch_id = $1
        ORDER BY row_number`,
@@ -334,7 +334,7 @@ app.post("/batch/:batchId/promote", async (req, res) => {
       }
       prepared.push({
         control_number: family.control_number,
-        family_comment: family.family_comment || family.family_comments || null,
+        family_comment: family.family_comment || family.family_comment || null,
         children: normalized.children,
       });
     }
@@ -367,7 +367,7 @@ app.post("/batch/:batchId/promote", async (req, res) => {
   } catch (err) {
     try {
       await client.query("ROLLBACK");
-    } catch (_) {}
+    } catch (_) { }
     console.error("[PROMOTE] failed:", err);
     return res.redirect(
       `/batch/${batchId}?message=${encodeURIComponent(
