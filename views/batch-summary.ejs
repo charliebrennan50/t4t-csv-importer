@@ -7,6 +7,14 @@
 </head>
 <body class="p-5">
   <h1 class="mb-4">Staging batch loaded</h1>
+  <form
+    action="/staging/purge"
+    method="post"
+    class="mb-3"
+    onsubmit="return confirm('Clear staging only? Live families are not changed.');"
+  >
+    <button type="submit" class="btn btn-outline-danger">Purge staging</button>
+  </form>
   <p>These counts come from <code>workflow.staging_import</code>, not from the upload toast.</p>
 
   <% if (message) { %>

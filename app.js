@@ -186,7 +186,29 @@ async function getBatchSummary(batchId) {
 }
 
 app.get("/", (req, res) => {
-  res.render("index", { message: null, report: null, blocked: false });
+  res.render("index", {
+    message: req.query.message || null,
+    report: null,
+    blocked: false,
+  });
+});
+
+app.post("/staging/purge", async (req, res) => {
+  try {
+    await pool.query("TRUNCATE workflow.staging_import");
+    console.log("[STAGING] purged");
+    res.redirect(
+      "/?message=" +
+        encodeURIComponent("Staging cleared. Live families were not changed.")
+    );
+  } catch (err) {
+    console.error("[STAGING] purge failed:", err);
+    res.status(500).render("index", {
+      message: `Could not clear staging. ${err.message}`,
+      report: null,
+      blocked: true,
+    });
+  }
 });
 
 app.post("/import", upload.single("csv"), async (req, res) => {

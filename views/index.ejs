@@ -10,6 +10,16 @@
   <h1 class="mb-2">T4T CSV Importer</h1>
   <p class="text-muted">Validate the whole file first. Staging is written only when every row is clean.</p>
 
+  <form
+    action="/staging/purge"
+    method="post"
+    class="mb-4"
+    onsubmit="return confirm('Clear staging only? Live families are not changed.');"
+  >
+    <button type="submit" class="btn btn-outline-danger">Purge staging</button>
+    <span class="text-muted ms-2">First step of a load. Does not touch live families.</span>
+  </form>
+
   <% if (message) { %>
     <div class="alert <%= blocked ? 'alert-danger' : 'alert-info' %>"><%= message %></div>
   <% } %>
