@@ -1,11 +1,12 @@
 require("dotenv").config();
 const express = require("express");
-fs.mkdirSync("uploads", { recursive: true });
+
 const multer = require("multer");
 const fs = require("fs");
 const { parse } = require("csv-parse/sync");
 const { v4: uuidv4 } = require("uuid");
 const { Pool } = require("pg");
+fs.mkdirSync("uploads", { recursive: true });
 
 const app = express();
 const PORT = process.env.PORT || 4000;
