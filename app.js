@@ -1,5 +1,6 @@
 require("dotenv").config();
 const express = require("express");
+fs.mkdirSync("uploads", { recursive: true });
 const multer = require("multer");
 const fs = require("fs");
 const { parse } = require("csv-parse/sync");
@@ -199,7 +200,7 @@ app.post("/staging/purge", async (req, res) => {
     console.log("[STAGING] purged");
     res.redirect(
       "/?message=" +
-        encodeURIComponent("Staging cleared. Live families were not changed.")
+      encodeURIComponent("Staging cleared. Live families were not changed.")
     );
   } catch (err) {
     console.error("[STAGING] purge failed:", err);
