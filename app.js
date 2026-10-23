@@ -32,9 +32,10 @@ function mapGender(raw) {
   if (!value) return { gender: null, error: null };
   if (["F", "FEMALE", "GIRL"].includes(value)) return { gender: "Girl", error: null };
   if (["M", "MALE", "BOY"].includes(value)) return { gender: "Boy", error: null };
+  if (["U", "UNISEX"].includes(value)) return { gender: "Unisex", error: null };
   return {
     gender: null,
-    error: `Unrecognized gender "${raw.trim()}". Use F/M, Female/Male, or Girl/Boy.`,
+    error: `Unrecognized gender "${raw.trim()}". Use F/M/U, Female/Male/Unisex, or Girl/Boy.`,
   };
 }
 
